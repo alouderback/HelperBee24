@@ -1,7 +1,6 @@
 from openai import OpenAI
 import sounddevice as sd
 import numpy as np
-import speech_recognition as sr
 import tempfile
 import wavio 
 
@@ -39,13 +38,9 @@ def record_audio(samplerate=44100, chunk_duration=1, silence_threshold=500, min_
 audio_file = record_audio()
 
 # Convert audio to text using SpeechRecognition
-recognizer = sr.Recognizer()
 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpfile:
     tmpfilename = tmpfile.name
     wavio.write(tmpfilename, audio_file, 44100, sampwidth=2)
-
-with sr.AudioFile(tmpfilename) as source:
-    audio_data = recognizer.record(source)
 
 # Transcribe audio using OpenAI API
 client = OpenAI()
