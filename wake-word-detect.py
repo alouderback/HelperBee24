@@ -7,14 +7,18 @@ import numpy as np
 import tempfile
 import pvporcupine
 import wavio
+import wave
 import os
 import time
+from pvrecorder import PvRecorder
 
 
 load_dotenv()
 # Retrieve the OpenAI API key and Porcupine access key from environment variables
 openai_api_key = os.getenv("OPENAI_API_KEY")
 porcupine_access_key = os.getenv("PORCUPINE_ACCESS_KEY")
+
+sd.default.device = 'seeed-2mic-voicecard'
 
 if not openai_api_key:
     raise ValueError("OpenAI API key is not set in environment variables.")
@@ -30,8 +34,8 @@ porcupine = pvporcupine.create(
     keywords=["picovoice", "bumblebee"]
 )
 
-paud = pyaudio.PyAudio()
-audio_frame = paud.open(rate=porcupine.sample_rate, channels=1, format=pyaudio.paInt16, input=True, frames_per_buffer=porcupine.frame_length)
+# paud = pyaudio.PyAudio()
+# audio_frame = paud.open(rate=porcupine.sample_rate, channels=1, format=pyaudio.paInt16, input=True, frames_per_buffer=porcupine.frame_length)
 
 def get_next_audio_frame():
     """
@@ -130,15 +134,39 @@ def record_audio(samplerate=44100, chunk_duration=1, silence_threshold=500, min_
         raise ValueError("No audio file recorded.")
 
 # Main loop for keyword detection and interaction
+recorder = PvRecorder(
+    frame_length=porcupine.frame_length,
+    device_index=3
+)
+recorder.start()
+wav_file = None
+wav_file = wave.open("./test.wav", "w")
+wav_file.setnchannels(1)
+wav_file.setsampwidth(2)
+wav_file.setframerate(16000)
+print('Listening ... ')
+
 try:
     while True:
-        keyword = audio_frame.read(porcupine.frame_length)
-        keyword = struct.unpack_from ("h" * porcupine.frame_length, keyword)
-        keyword_index= porcupine.process(keyword)
+        # keyword = audio_frame.read(porcupine.frame_length)
+        # keyword = struct.unpack_from ("h" * porcupine.frame_length, keyword)
+        # keyword_index= porcupine.process(keyword)
+
+        
+
+        
+
+        pcm = recorder.read()
+        keyword_index = porcupine.process(pcm)
+
+        if wav_file is not None:
+            wav_file.writeframes(struct.pack("h" * len(pcm), *pcm))
+
         print(keyword_index)
         if keyword_index == 0:
             print("Detected 'picovoice'")
         elif keyword_index == 1:
+            recorder.delete()
             print("Detected 'bumblebee'")
 
             # Record audio from the microphone
@@ -163,9 +191,7 @@ try:
 
 finally:
 # Ensuring proper release of resources
-    if porcupine is not None:
-        porcupine.delete()
-    if audio_frame is not None:
-        audio_frame.close()
-    if paud is not None:
-        paud.terminate()
+    recorder.delete()
+    porcupine.delete()
+    if wav_file is not None:
+        wav_file.close()
