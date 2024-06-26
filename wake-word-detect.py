@@ -1,5 +1,8 @@
 from openai import OpenAI
+from dotenv import load_dotenv
 import sounddevice as sd
+import struct
+import pyaudio
 import numpy as np
 import tempfile
 import pvporcupine
@@ -7,6 +10,8 @@ import wavio
 import os
 import time
 
+
+load_dotenv()
 # Retrieve the OpenAI API key and Porcupine access key from environment variables
 openai_api_key = os.getenv("OPENAI_API_KEY")
 porcupine_access_key = os.getenv("PORCUPINE_ACCESS_KEY")
@@ -22,14 +27,20 @@ client = OpenAI(api_key=openai_api_key, default_headers={"OpenAI-Beta": "assista
 # Initialize Porcupine
 porcupine = pvporcupine.create(
     access_key=porcupine_access_key,
-    keywords=['picovoice', 'bumblebee']
+    keywords=["picovoice", "bumblebee"]
 )
+
+paud = pyaudio.PyAudio()
+audio_frame = paud.open(rate=porcupine.sample_rate, channels=1, format=pyaudio.paInt16, input=True, frames_per_buffer=porcupine.frame_length)
 
 def get_next_audio_frame():
     """
     Record a chunk of audio from the microphone.
     """
-    return sd.rec(int(porcupine.frame_length), samplerate=porcupine.sample_rate, channels=1, dtype='int16')
+    
+
+    
+    # return sd.rec(int(porcupine.frame_length), samplerate=porcupine.sample_rate, channels=1, dtype='int16')
 
 def query_and_record(prompt, mp3_filename):
     """
@@ -121,9 +132,10 @@ def record_audio(samplerate=44100, chunk_duration=1, silence_threshold=500, min_
 # Main loop for keyword detection and interaction
 try:
     while True:
-        audio_frame = get_next_audio_frame()
-        sd.wait()
-        keyword_index = porcupine.process(audio_frame.flatten())
+        keyword = audio_frame.read(porcupine.frame_length)
+        keyword = struct.unpack_from ("h" * porcupine.frame_length, keyword)
+        keyword_index= porcupine.process(keyword)
+        print(keyword_index)
         if keyword_index == 0:
             print("Detected 'picovoice'")
         elif keyword_index == 1:
@@ -150,4 +162,10 @@ try:
             query_and_record(prompt, mp3_filename)
 
 finally:
-    porcupine.delete()
+# Ensuring proper release of resources
+    if porcupine is not None:
+        porcupine.delete()
+    if audio_frame is not None:
+        audio_frame.close()
+    if paud is not None:
+        paud.terminate()
