@@ -38,7 +38,7 @@ def get_next_audio_frame():
     Record a chunk of audio from the microphone.
     """
     
-
+    return audio_frame.read(porcupine.frame_length)
     
     # return sd.rec(int(porcupine.frame_length), samplerate=porcupine.sample_rate, channels=1, dtype='int16')
 
@@ -132,7 +132,8 @@ def record_audio(samplerate=44100, chunk_duration=1, silence_threshold=500, min_
 # Main loop for keyword detection and interaction
 try:
     while True:
-        keyword = audio_frame.read(porcupine.frame_length)
+        # keyword = audio_frame.read(porcupine.frame_length)
+        keyword = get_next_audio_frame()
         keyword = struct.unpack_from ("h" * porcupine.frame_length, keyword)
         keyword_index= porcupine.process(keyword)
         print(keyword_index)
