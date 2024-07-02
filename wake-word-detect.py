@@ -111,10 +111,12 @@ def query_and_record(prompt, mp3_filename):
         )
 
         # Extract the text content from the response
-        text_response = ""
-        for message in message_list.data:
-            if message.role == "assistant" and message.content:
-                text_response += message.content + "\n"
+        # text_response = ""
+        # for message in message_list.data:
+        #     if message.role == "assistant" and message.content:
+        #         text_response += message.content + "\n"
+
+        text_response = message_list.data[0].content[0].text.value
 
         # Generate an audio response from the text
         response = client.audio.speech.create(
