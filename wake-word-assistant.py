@@ -10,6 +10,7 @@ import time
 from pvrecorder import PvRecorder
 import wavio
 from openai import OpenAI
+import pygame
 
 load_dotenv()
 
@@ -19,7 +20,7 @@ porcupine_access_key = os.getenv("PORCUPINE_ACCESS_KEY")
 assistant_api_key = os.getenv("ASSISTANT_API_KEY")
 
 sd.default.device = None #'seeed-2mic-voicecard'
- 
+
 if not openai_api_key:
     raise ValueError("OpenAI API key is not set in environment variables.")
 if not porcupine_access_key:
@@ -33,10 +34,8 @@ porcupine = pvporcupine.create(
     access_key=porcupine_access_key,
     keywords=["picovoice", "bumblebee"]
 )
-# paud = pyaudio.PyAudio()
-# audio_frame = paud.open(rate=porcupine.sample_rate, channels=1, format=pyaudio.paInt16, input=True, frames_per_buffer=porcupine.frame_length)
 
-def record_audio(samplerate=44100, chunk_duration=1, silence_threshold=500):
+def record_audio(samplerate=44100, chunk_duration=1, silence_threshold=2000):
     """
     Record audio from the default microphone until silence is detected.
     """
@@ -64,17 +63,16 @@ def record_audio(samplerate=44100, chunk_duration=1, silence_threshold=500):
         raise ValueError("No audio file recorded.")
     
 def is_silent(file, threshold=500):
-
     """
     Returns True if the audio file is below the silent threshold.
     """
     return np.abs(file).mean() < threshold
 
-def query_and_record(prompt, mp3_filename):
+def query_and_record(prompt):
     """
     Send a prompt to the OpenAI assistant and record the response as an MP3 file.
     """
-    # # Create an assistant instance
+     # # Create an assistant instance
     # assistant = client.beta.assistants.create(
     #     name="Senior Tech Help",
     #     instructions="You are a helpful tech teacher specifically for seniors. You will help older adults (ages 50+) with quick questions about smartphones, voice assistants, computers, cameras, the internet, digital shopping, or any other technology-related topic. You will always ask for specifics, like what device or phone they are using, and provide them with step-by-step instructions for their response.",
@@ -111,12 +109,12 @@ def query_and_record(prompt, mp3_filename):
         message_list = client.beta.threads.messages.list(
             thread_id=thread.id
         )
-
-        # Extract the text content from the response
+         # Extract the text content from the response
         # text_response = ""
         # for message in message_list.data:
         #     if message.role == "assistant" and message.content:
         #         text_response += message.content + "\n"
+
 
         text_response = message_list.data[0].content[0].text.value
 
@@ -127,15 +125,28 @@ def query_and_record(prompt, mp3_filename):
             input=text_response,
         )
 
-        response.stream_to_file(mp3_filename)
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmpfile:
+            mp3_filename = tmpfile.name
+            response.stream_to_file(mp3_filename)
 
         print("Response recorded to " + mp3_filename)
 
+        # Initialize pygame mixer
+        pygame.mixer.init()
+
+        # Load the mp3 file
+        pygame.mixer.music.load(mp3_filename)
+
+        # Play the mp3 file
+        pygame.mixer.music.play()
+
+        # Wait until the music finishes playing
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)
 
 # Main loop for keyword detection and interaction
 recorder = PvRecorder(frame_length=porcupine.frame_length)
 recorder.start()
-wav_file = None
 
 try:
     while True:
@@ -164,8 +175,7 @@ try:
 
             # Example usage
             prompt = transcription.text
-            mp3_filename = "response.mp3"
-            query_and_record(prompt, mp3_filename)
+            query_and_record(prompt)
 
 except KeyboardInterrupt:
     print("Script interrupted.")
@@ -173,7 +183,5 @@ finally:
 # Ensuring proper release of resources
     if porcupine is not None:
         porcupine.delete()
-    # if audio_frame is not None:
-    #     audio_frame.close()
-    # if paud is not None:
-    #     paud.terminate()
+    recorder.stop()
+    recorder.delete()
