@@ -16,7 +16,7 @@ load_dotenv()
 # Retrieve the OpenAI API key and Porcupine access key from environment variables
 openai_api_key = os.getenv("OPENAI_API_KEY")
 porcupine_access_key = os.getenv("PORCUPINE_ACCESS_KEY")
-assistant_api_key = os.getenv("ASSSISTANT_API_KEY")
+assistant_api_key = os.getenv("ASSISTANT_API_KEY")
 
 sd.default.device = None #'seeed-2mic-voicecard'
  
@@ -118,7 +118,7 @@ def query_and_record(prompt, mp3_filename):
         #     if message.role == "assistant" and message.content:
         #         text_response += message.content + "\n"
 
-        text_response = message_list.data[-1].content
+        text_response = message_list.data[0].content[0].text.value
 
         # Generate an audio response from the text
         response = client.audio.speech.create(
