@@ -27,6 +27,10 @@ def query_and_record(prompt):
 
     global thread_id  # Access the global thread ID
 
+    if not prompt.strip():
+        print("Error: The prompt is empty.")
+        return
+
     if thread_id is None:
         # Create a thread for communication
         thread = client.beta.threads.create()
@@ -37,60 +41,70 @@ def query_and_record(prompt):
         thread = client.beta.threads.retrieve(thread_id)
         print(f"Using existing thread with ID: {thread_id}")
 
-    # Send user's prompt to the AI
-    message = client.beta.threads.messages.create(
-        thread_id=thread.id,
-        role="user",
-        content=prompt
-    )
-    
-    # Start the AI to process the user prompt
-    run = client.beta.threads.runs.create(
-        thread_id=thread.id,
-        assistant_id=assistant_id,
-        instructions="Please address the user as Jane Doe. The user has a premium account."
-    )
-    
-    # Wait until AI is complete with processing
-    while run.status in ["in_progress", "queued"]:
-        time.sleep(1)
-        run = client.beta.threads.runs.retrieve(
+    try:
+        # Send user's prompt to the AI
+        message = client.beta.threads.messages.create(
             thread_id=thread.id,
-            run_id=run.id
+            role="user",
+            content=prompt
         )
-
-    if run.status == "completed":
-        message_list = client.beta.threads.messages.list(
-            thread_id=thread.id
+        
+        # Start the AI to process the user prompt
+        run = client.beta.threads.runs.create(
+            thread_id=thread.id,
+            assistant_id=assistant_id,
+            instructions="Please address the user as Jane Doe. The user has a premium account."
         )
+        
+        # Wait until AI is complete with processing
+        while run.status in ["in_progress", "queued"]:
+            time.sleep(1)
+            run = client.beta.threads.runs.retrieve(
+                thread_id=thread.id,
+                run_id=run.id
+            )
 
-        text_response = message_list.data[0].content[0].text.value
+        if run.status == "completed":
+            message_list = client.beta.threads.messages.list(
+                thread_id=thread.id
+            )
 
-        # Generate an audio response from the text
-        response = client.audio.speech.create(
-            model="tts-1-hd",
-            voice="echo",
-            input=text_response,
-        )
+            # Ensure there's a valid response
+            if not message_list.data or not message_list.data[0].content:
+                print("Error: No response content available.")
+                return
 
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmpfile:
-            mp3_filename = tmpfile.name
-            response.stream_to_file(mp3_filename)
+            text_response = message_list.data[0].content[0].text.value
 
-        print("Response recorded to " + mp3_filename)
+            # Generate an audio response from the text
+            response = client.audio.speech.create(
+                model="tts-1-hd",
+                voice="echo",
+                input=text_response,
+            )
 
-        # Initialize pygame mixer
-        pygame.mixer.init()
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmpfile:
+                mp3_filename = tmpfile.name
+                response.stream_to_file(mp3_filename)
 
-        # Load the mp3 file
-        pygame.mixer.music.load(mp3_filename)
+            print("Response recorded to " + mp3_filename)
 
-        # Play the mp3 file
-        pygame.mixer.music.play()
+            # Initialize pygame mixer
+            pygame.mixer.init()
 
-        # Wait until the response finishes playing
-        while pygame.mixer.music.get_busy():
-            pygame.time.Clock().tick(10)
+            # Load the mp3 file
+            pygame.mixer.music.load(mp3_filename)
+
+            # Play the mp3 file
+            pygame.mixer.music.play()
+
+            # Wait until the response finishes playing
+            while pygame.mixer.music.get_busy():
+                pygame.time.Clock().tick(10)
+
+    except Exception as e:
+        print("Error during query and recording:", str(e))
+
 
 def handle_interaction(prompt):
     """

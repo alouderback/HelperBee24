@@ -8,7 +8,7 @@ import os
 import pvporcupine
 from pvrecorder import PvRecorder
 import time
-from response import handle_interaction  # Import the interaction handling function
+from response import handle_interaction 
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,8 +16,6 @@ load_dotenv()
 # Retrieve the OpenAI API key and Porcupine access key from environment variables
 openai_api_key = os.getenv("OPENAI_API_KEY")
 porcupine_access_key = os.getenv("PORCUPINE_ACCESS_KEY")
-
-sd.default.device = None  # 'seeed-2mic-voicecard'
 
 if not openai_api_key:
     raise ValueError("OpenAI API key is not set in environment variables.")
@@ -33,44 +31,45 @@ porcupine = pvporcupine.create(
 # Initialize the OpenAI client
 client = OpenAI(api_key=openai_api_key, default_headers={"OpenAI-Beta": "assistants=v2"})
 
-def record_audio(samplerate=44100, chunk_duration=1, silence_threshold=2000, timeout=5):
+def record_audio(samplerate=44100, chunk_duration=1, silence_threshold=1000, silence_duration=10):
     """
-    Record audio from the default microphone until silence is detected,
-    with a timeout period to allow capturing additional audio.
+    Record audio in real-time and stop when silence is detected for the specified duration.
     """
     print("Recording... Press Ctrl+C to stop.")
     audio_file = []
-
-    start_time = time.time()  # Record the start time
+    silence_start_time = None
+    chunk_size = int(chunk_duration * samplerate)
+    
     try:
-        while True:
-            recording = sd.rec(int(chunk_duration * samplerate), samplerate=samplerate, channels=1, dtype='int16')
-            sd.wait()
-            audio_file.append(recording)
-
-            # Check if the last recorded chunk is silent
-            if is_silent(recording, silence_threshold):
-                # Check if timeout period has elapsed
-                if time.time() - start_time > timeout:
-                    print("Timeout reached, stopping recording.")
-                    break
-                else:
-                    print("Silence detected, waiting for more audio...")
+        with sd.InputStream(samplerate=samplerate, channels=1, dtype='int16', callback=lambda indata, frames, time, status: audio_file.append(indata.copy())):
+            while True:
+                if len(audio_file) > 0:
+                    last_chunk = audio_file[-1]
+                    
+                    # Check if the last chunk is silent
+                    if is_silent(last_chunk, silence_threshold):
+                        if silence_start_time is None:
+                            silence_start_time = time.time()
+                        elif time.time() - silence_start_time > silence_duration:
+                            print("Silence detected, stopping recording.")
+                            break
+                    else:
+                        silence_start_time = None
 
     except KeyboardInterrupt:
         print("Recording stopped manually.")
+    
+    return np.concatenate(audio_file, axis=0) if audio_file else np.array([])
 
-    if audio_file:
-        audio_file = np.concatenate(audio_file, axis=0)
-        return audio_file
-    else:
-        raise ValueError("No audio file recorded.")
 
-def is_silent(file, threshold=500):
+def is_silent(chunk, threshold=1000):
     """
-    Returns True if the audio file is below the silent threshold.
+    Returns True if the audio chunk is below the silent threshold.
     """
-    return np.abs(file).mean() < threshold
+    # Calculate the RMS value of the audio chunk
+    rms = np.sqrt(np.mean(np.square(chunk)))
+    return rms < threshold
+
 
 recorder = PvRecorder(frame_length=porcupine.frame_length)
 recorder.start()
@@ -85,8 +84,8 @@ try:
         elif keyword_index == 1:
             print("Detected 'bumblebee'")
 
-            # Record audio from the microphone with extended silence detection
-            audio_file = record_audio(timeout=5)  # Adjust timeout 
+            # Record audio from the microphone with real-time silence detection
+            audio_file = record_audio(silence_duration=5) 
 
             # Convert audio to text using OpenAI API
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpfile:
