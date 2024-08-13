@@ -31,11 +31,31 @@ porcupine = pvporcupine.create(
 # Initialize the OpenAI client
 client = OpenAI(api_key=openai_api_key, default_headers={"OpenAI-Beta": "assistants=v2"})
 
+frame_length = porcupine.frame_length
+sample_rate = porcupine.sample_rate
+
+def is_silent(chunk, threshold=1000):
+    rms = np.sqrt(np.mean(np.square(chunk)))
+    return rms < threshold
+
+def detect_wake_word():
+    try:
+        with sd.InputStream(samplerate=sample_rate, channels=1, dtype='int16') as stream:
+            while True:
+                pcm = stream.read(frame_length)[0]
+                pcm = np.frombuffer(pcm, dtype=np.int16)
+                keyword_index = porcupine.process(pcm)
+
+                if keyword_index == 0:
+                    print("Detected 'picovoice'")
+                    return 'picovoice'
+                elif keyword_index == 1:
+                    print("Detected 'bumblebee'")
+                    return 'bumblebee'
+    except KeyboardInterrupt:
+        print("Script interrupted.")
 
 def record_audio(samplerate=44100, chunk_duration=1, silence_threshold=1000, silence_duration=10):
-    """
-    Record audio in real-time and stop when silence is detected for the specified duration.
-    """
     print("Recording... Press Ctrl+C to stop.")
     audio_file = []
     silence_start_time = None
@@ -62,63 +82,46 @@ def record_audio(samplerate=44100, chunk_duration=1, silence_threshold=1000, sil
     
     return np.concatenate(audio_file, axis=0) if audio_file else np.array([])
 
+def handle_follow_up():
+    print("Listening for follow-up command...")
+    audio_file = record_audio(silence_duration=5)
+    
+    if len(audio_file) > 0:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpfile:
+            tmpfilename = tmpfile.name
+            wavio.write(tmpfilename, audio_file, 44100, sampwidth=2)
 
-# Define frame length and sample rate
-frame_length = porcupine.frame_length
-sample_rate = porcupine.sample_rate
+        transcription = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=open(tmpfilename, "rb"),
+        )
 
-def is_silent(chunk, threshold=1000):
-    """
-    Returns True if the audio chunk is below the silent threshold.
-    """
-    # Calculate the RMS value of the audio chunk
-    rms = np.sqrt(np.mean(np.square(chunk)))
-    return rms < threshold
+        print("Transcription:", transcription.text)
 
-def detect_wake_word():
-    """
-    Detect wake words using Porcupine.
-    """
-    try:
-        with sd.InputStream(samplerate=sample_rate, channels=1, dtype='int16') as stream:
-            while True:
-                pcm = stream.read(frame_length)[0]
-                pcm = np.frombuffer(pcm, dtype=np.int16)
-                keyword_index = porcupine.process(pcm)
+        interaction_thread = threading.Thread(target=handle_interaction, args=(transcription.text,))
+        interaction_thread.start()
+        interaction_thread.join()
 
-                if keyword_index == 0:
-                    print("Detected 'picovoice'")
-                    return 'picovoice'
-                elif keyword_index == 1:
-                    print("Detected 'bumblebee'")
-                    return 'bumblebee'
+        # After handling the follow-up, check if there is more to listen for
+        handle_follow_up()
+    else:
+        print("No follow-up detected. Restarting wake word detection.")
+        wake_word_thread = threading.Thread(target=detect_wake_word_instance)
+        wake_word_thread.start()
 
-    except KeyboardInterrupt:
-        print("Script interrupted.")
+def detect_wake_word_instance():
+    while True:
+        wake_word = detect_wake_word()
+        if wake_word == 'bumblebee':
+            handle_follow_up()
+        else:
+            break
 
 try:
     while True:
-        wake_word = detect_wake_word()
-
-        if wake_word == 'bumblebee':
-            # Record audio from the microphone with real-time silence detection
-            audio_file = record_audio(silence_duration=5)
-
-            # Convert audio to text using OpenAI API
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpfile:
-                tmpfilename = tmpfile.name
-                wavio.write(tmpfilename, audio_file, 44100, sampwidth=2)
-
-            transcription = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=open(tmpfilename, "rb"),
-            )
-
-            print("Transcription:", transcription.text)
-
-            # Start a new thread for handling the interaction
-            interaction_thread = threading.Thread(target=handle_interaction, args=(transcription.text,))
-            interaction_thread.start()
+        wake_word_thread = threading.Thread(target=detect_wake_word_instance)
+        wake_word_thread.start()
+        wake_word_thread.join()
 
 except KeyboardInterrupt:
     print("Script interrupted.")
