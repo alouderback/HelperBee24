@@ -1,3 +1,19 @@
+"""
+This script is designed for detecting a wake word and handling voice interactions with an OpenAI assistant. 
+The script performs the following tasks:
+
+1. Imports necessary libraries such as sounddevice, numpy, tempfile, wavio, and OpenAI.
+2. Loads environment variables to retrieve the OpenAI API key and Porcupine access key, which are essential for authentication and wake word detection.
+3. Initializes the Porcupine wake word engine to listen for specific keywords ("picovoice" and "bumblebee").
+4. Sets up an OpenAI client for sending user prompts and receiving responses.
+5. Defines functions to:
+   - Detect the wake word using an audio stream.
+   - Record audio until silence is detected, indicating the end of the user's command.
+   - Handle follow-up commands by continuously listening after the initial response.
+6. The main loop continuously listens for the wake word and handles interactions as long as the script is running.
+7. Ensures proper cleanup by deleting the Porcupine instance when the script is interrupted.
+"""
+
 import sounddevice as sd
 import numpy as np
 import tempfile

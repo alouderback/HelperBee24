@@ -1,3 +1,15 @@
+"""
+This script interacts with an OpenAI assistant by sending text prompts and receiving voice responses.
+It performs the following tasks:
+1. Loads environment variables for the OpenAI API key and assistant access key.
+2. Initializes the audio device using the sounddevice library.
+3. Sets up an OpenAI client with the provided API key.
+4. Manages conversation threads with the assistant, either creating a new one or continuing an existing one.
+5. Sends user prompts to the assistant and retrieves responses.
+6. Converts the assistant's text response into an audio file.
+7. Plays the audio response using the pygame library.
+"""
+
 import tempfile
 import os
 from openai import OpenAI
